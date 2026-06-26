@@ -6,8 +6,16 @@ export default async function proxy(request: NextRequest) {
   const session = await auth();
   const { pathname } = request.nextUrl;
 
-  // Allow login page and auth API
-  if (pathname === "/login" || pathname.startsWith("/api/auth")) {
+  // Public routes — anyone can access
+  const isPublic =
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname.startsWith("/login/") ||
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/events") ||
+    pathname.startsWith("/_next/");
+
+  if (isPublic) {
     return NextResponse.next();
   }
 

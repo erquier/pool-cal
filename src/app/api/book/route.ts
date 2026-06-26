@@ -15,18 +15,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "La reserva debe terminar después de empezar" }, { status: 400 });
   }
 
-  const duration = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
-  if (duration > 3) {
-    return NextResponse.json({ error: "Máximo 3 horas por reserva" }, { status: 400 });
-  }
-
   if (startDate < new Date()) {
     return NextResponse.json({ error: "No se puede reservar en el pasado" }, { status: 400 });
   }
 
   const hour = startDate.getHours();
-  if (hour < 7 || hour >= 22) {
-    return NextResponse.json({ error: "Horario de piscina: 7:00 - 22:00" }, { status: 400 });
+  if (hour < 7 || hour >= 23) {
+    return NextResponse.json({ error: "Horario de piscina: desde las 7:00" }, { status: 400 });
   }
 
   // Verificar overlap
@@ -51,15 +46,18 @@ export async function POST(request: Request) {
   const userEvents = await getEvents(dayStart, dayEnd);
   const userHasBooking = userEvents.some((e) => e.creatorEmail === session.user?.email);
   if (userHasBooking) {
+    console.log(`[BOOK] Rejected: user ${session.user.email} already has a booking this day`);
     return NextResponse.json({ error: "Ya tienes una reserva este día. Máximo 1 por hogar." }, { status: 409 });
   }
 
+  console.log(`[BOOK] Creating booking for ${session.user.email}: ${start} - ${end}`);
   const eventId = await createBooking(
     startDate,
     endDate,
     session.user.name || "Vecino",
     session.user.email || ""
   );
+  console.log(`[BOOK] Created event: ${eventId}`);
 
   return NextResponse.json({ id: eventId, success: true });
 }

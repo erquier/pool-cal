@@ -1,5 +1,6 @@
 services:
   app:
+    image: pool-cal-app
     build: .
     container_name: pool-cal
     restart: unless-stopped
@@ -7,6 +8,7 @@ services:
       - "3000:3000"
     env_file:
       - .env.local
+      - .sa.env
     environment:
       - NODE_ENV=production
-      - AUTH_TRUST_HOST=http://localhost:3000
+      - AUTH_TRUST_HOST=http:/...3000
