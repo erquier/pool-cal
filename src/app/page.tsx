@@ -1,23 +1,20 @@
 import { auth } from "./api/auth/[...nextauth]/route";
 import { getEvents } from "@/lib/google-calendar";
+import {
+  addDaysToDateKey,
+  getPoolWeekStartDateKey,
+  poolDateTime,
+} from "@/lib/pool-time";
 import CalendarClient from "./CalendarClient";
 import PoolInfo from "./PoolInfo";
 
 export const dynamic = "force-dynamic";
 
-function getWeekStart(d: Date): Date {
-  const date = new Date(d);
-  const day = date.getDay();
-  date.setDate(date.getDate() - day);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
 export default async function Home() {
   const session = await auth();
-  const weekStart = getWeekStart(new Date());
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 7);
+  const weekStartKey = getPoolWeekStartDateKey();
+  const weekStart = poolDateTime(weekStartKey);
+  const weekEnd = poolDateTime(addDaysToDateKey(weekStartKey, 7));
 
   let initialEvents: any[] = [];
   try {
@@ -25,8 +22,6 @@ export default async function Home() {
   } catch (e) {
     console.error("Error fetching initial events:", e);
   }
-
-  const weekStartStr = weekStart.toISOString();
 
   return (
     <div className="max-w-5xl mx-auto p-3 sm:p-4 md:p-6">
@@ -61,7 +56,7 @@ export default async function Home() {
         initialEvents={initialEvents}
         userEmail={session?.user?.email || null}
         userName={session?.user?.name || null}
-        initialWeekStart={weekStartStr}
+        initialWeekStart={weekStartKey}
       />
 
       <PoolInfo />

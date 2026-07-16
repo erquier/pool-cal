@@ -1,6 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import {
+  getDateKeyParts,
+  getPoolDateKey,
+  getPoolDateTimeParts,
+  poolDateTime,
+} from "@/lib/pool-time";
 
 interface Props {
   start: Date;
@@ -16,16 +22,17 @@ const MONTHS = [
 ];
 
 function formatTime(d: Date): string {
-  const h = d.getHours();
+  const { hour: h, minute } = getPoolDateTimeParts(d);
   const ampm = h >= 12 ? "p. m." : "a. m.";
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${h12}:${d.getMinutes().toString().padStart(2, "0")} ${ampm}`;
+  return `${h12}:${minute.toString().padStart(2, "0")} ${ampm}`;
 }
 
 type Mode = "30min" | "1h" | "2h" | "custom";
 
 export default function BookingModal({ start, end: _end, userName, onConfirm, onClose }: Props) {
-  const startHour = start.getHours();
+  const startDateKey = getPoolDateKey(start);
+  const startHour = getPoolDateTimeParts(start).hour;
   const [mode, setMode] = useState<Mode>("1h");
   const [customEnd, setCustomEnd] = useState(startHour + 3);
 
@@ -33,17 +40,15 @@ export default function BookingModal({ start, end: _end, userName, onConfirm, on
   if (mode === "30min") {
     actualEnd = new Date(start.getTime() + 30 * 60 * 1000);
   } else if (mode === "1h") {
-    actualEnd = new Date(start);
-    actualEnd.setHours(startHour + 1, 0, 0, 0);
+    actualEnd = new Date(start.getTime() + 60 * 60 * 1000);
   } else if (mode === "2h") {
-    actualEnd = new Date(start);
-    actualEnd.setHours(startHour + 2, 0, 0, 0);
+    actualEnd = new Date(start.getTime() + 2 * 60 * 60 * 1000);
   } else {
-    actualEnd = new Date(start);
-    actualEnd.setHours(customEnd, 0, 0, 0);
+    actualEnd = poolDateTime(startDateKey, customEnd);
   }
 
-  const dayName = `${start.getDate()} de ${MONTHS[start.getMonth()]}`;
+  const startDateParts = getDateKeyParts(startDateKey);
+  const dayName = `${startDateParts.day} de ${MONTHS[startDateParts.month - 1]}`;
 
   // Opciones de hora de fin para custom: desde start+30min hasta 23:00
   const customOptions: number[] = [];
@@ -113,7 +118,7 @@ export default function BookingModal({ start, end: _end, userName, onConfirm, on
                       : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
                   }`}
                 >
-                  {formatTime(new Date(new Date().setHours(h, 0, 0, 0)))}
+                  {formatTime(poolDateTime(startDateKey, h))}
                 </button>
               ))}
             </div>

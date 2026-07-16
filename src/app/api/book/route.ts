@@ -1,5 +1,11 @@
 import { auth } from "@/app/api/auth/[...nextauth]/route";
 import { createBooking, getEvents } from "@/lib/google-calendar";
+import {
+  addDaysToDateKey,
+  getPoolDateKey,
+  getPoolDateTimeParts,
+  poolDateTime,
+} from "@/lib/pool-time";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
@@ -19,7 +25,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No se puede reservar en el pasado" }, { status: 400 });
   }
 
-  const hour = startDate.getHours();
+  const hour = getPoolDateTimeParts(startDate).hour;
   if (hour < 7 || hour >= 23) {
     return NextResponse.json({ error: "Horario de piscina: desde las 7:00" }, { status: 400 });
   }
@@ -39,10 +45,9 @@ export async function POST(request: Request) {
   }
 
   // Verificar max 1 reserva por usuario por día
-  const dayStart = new Date(startDate);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(startDate);
-  dayEnd.setHours(23, 59, 59, 999);
+  const bookingDateKey = getPoolDateKey(startDate);
+  const dayStart = poolDateTime(bookingDateKey);
+  const dayEnd = poolDateTime(addDaysToDateKey(bookingDateKey, 1));
   const userEvents = await getEvents(dayStart, dayEnd);
   const userHasBooking = userEvents.some((e) => e.creatorEmail === session.user?.email);
   if (userHasBooking) {
