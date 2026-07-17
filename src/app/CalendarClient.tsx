@@ -2,6 +2,17 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import BookingModal from "./BookingModal";
+import {
+  addDaysToDateKey,
+  dateKeyFromParts,
+  getDateKeyDay,
+  getDateKeyParts,
+  getPoolDateKey,
+  getPoolDateTimeParts,
+  getPoolWeekStartDateKey,
+  getWeekStartForDateKey,
+  poolDateTime,
+} from "@/lib/pool-time";
 
 interface Booking {
   id: string;
@@ -19,32 +30,17 @@ const MONTHS = [
 const DAYS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 const HOURS = Array.from({ length: 17 }, (_, i) => i + 7);
 
-function getWeekStart(d: Date): Date {
-  const date = new Date(d);
-  const day = date.getDay();
-  date.setDate(date.getDate() - day);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-function formatHour(hour: number): string {
+function formatHour(hour: number, minute = 0): string {
   const ampm = hour >= 12 ? "p. m." : "a. m.";
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-  return `${h12} ${ampm}`;
-}
-
-function formatDate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function formatDayDate(d: Date): string {
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  const minutes = minute === 0 ? "" : `:${String(minute).padStart(2, "0")}`;
+  return `${h12}${minutes} ${ampm}`;
 }
 
 function formatTimeRange(start: string, end: string): string {
-  const s = new Date(start);
-  const e = new Date(end);
-  return `${formatHour(s.getHours())} — ${formatHour(e.getHours())}`;
+  const s = getPoolDateTimeParts(new Date(start));
+  const e = getPoolDateTimeParts(new Date(end));
+  return `${formatHour(s.hour, s.minute)} — ${formatHour(e.hour, e.minute)}`;
 }
 
 function isFutureBooking(end: string): boolean {
@@ -68,7 +64,7 @@ export default function CalendarClient({
   userName,
   initialWeekStart,
 }: Props) {
-  const [weekStart, setWeekStart] = useState(() => new Date(initialWeekStart));
+  const [weekStart, setWeekStart] = useState(initialWeekStart);
   const [events, setEvents] = useState<Booking[]>(initialEvents);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -77,12 +73,12 @@ export default function CalendarClient({
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
-  const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
+  const [pickerYear, setPickerYear] = useState(
+    () => getDateKeyParts(getPoolDateKey()).year
+  );
 
   const weekEnd = useMemo(() => {
-    const end = new Date(weekStart);
-    end.setDate(end.getDate() + 7);
-    return end;
+    return addDaysToDateKey(weekStart, 7);
   }, [weekStart]);
 
   const showToast = (msg: string, duration = 4000) => {
@@ -94,8 +90,10 @@ export default function CalendarClient({
     setLoading(true);
     setError("");
     try {
+      const rangeStart = poolDateTime(weekStart);
+      const rangeEnd = poolDateTime(weekEnd);
       const res = await fetch(
-        `/api/events?start=${weekStart.toISOString()}&end=${weekEnd.toISOString()}&_=${Date.now()}`
+        `/api/events?start=${rangeStart.toISOString()}&end=${rangeEnd.toISOString()}&_=${Date.now()}`
       );
       if (!res.ok) throw new Error("Error al cargar");
       const data = await res.json();
@@ -111,11 +109,9 @@ export default function CalendarClient({
     fetchEvents();
   }, [fetchEvents]);
 
-  function isBooked(date: Date, hour: number): Booking | undefined {
-    const slotStart = new Date(date);
-    slotStart.setHours(hour, 0, 0, 0);
-    const slotEnd = new Date(date);
-    slotEnd.setHours(hour + 1, 0, 0, 0);
+  function isBooked(dateKey: string, hour: number): Booking | undefined {
+    const slotStart = poolDateTime(dateKey, hour);
+    const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
     return events.find((e) => {
       const eStart = new Date(e.start);
       const eEnd = new Date(e.end);
@@ -123,9 +119,8 @@ export default function CalendarClient({
     });
   }
 
-  function handleSlotClick(date: Date, hour: number) {
-    const start = new Date(date);
-    start.setHours(hour, 0, 0, 0);
+  function handleSlotClick(dateKey: string, hour: number) {
+    const start = poolDateTime(dateKey, hour);
     if (start < new Date()) return;
 
     if (!userEmail) {
@@ -133,11 +128,10 @@ export default function CalendarClient({
       return;
     }
 
-    const booking = isBooked(date, hour);
+    const booking = isBooked(dateKey, hour);
     if (booking) return;
 
-    const end = new Date(start);
-    end.setHours(hour + 1, 0, 0, 0);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
     setModal({ start, end });
   }
 
@@ -181,15 +175,15 @@ export default function CalendarClient({
     }
   }
 
-  const weekDays: Date[] = [];
+  const weekDays: string[] = [];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + i);
-    weekDays.push(d);
+    weekDays.push(addDaysToDateKey(weekStart, i));
   }
 
-  const weekLabel = `Semana del ${weekDays[0].getDate()} ${MONTHS[weekDays[0].getMonth()]}`;
-  const isThisWeek = formatDate(weekStart) === formatDate(getWeekStart(new Date()));
+  const weekStartParts = getDateKeyParts(weekStart);
+  const todayDateKey = getPoolDateKey();
+  const weekLabel = `Semana del ${weekStartParts.day} ${MONTHS[weekStartParts.month - 1]}`;
+  const isThisWeek = weekStart === getPoolWeekStartDateKey();
 
   // My bookings
   const myBookings = useMemo(
@@ -214,9 +208,7 @@ export default function CalendarClient({
         <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-100">
           <button
             onClick={() => {
-              const prev = new Date(weekStart);
-              prev.setDate(prev.getDate() - 7);
-              setWeekStart(prev);
+              setWeekStart(addDaysToDateKey(weekStart, -7));
             }}
             className="text-blue-600 hover:text-blue-800 font-medium text-xs sm:text-sm transition-colors active:scale-95"
           >
@@ -267,16 +259,16 @@ export default function CalendarClient({
                   {/* Month grid */}
                   <div className="grid grid-cols-3 gap-1.5">
                     {MONTHS.map((m, i) => {
-                      const now = new Date();
+                      const now = getDateKeyParts(todayDateKey);
                       const isThisMonth =
-                        now.getFullYear() === pickerYear && now.getMonth() === i;
+                        now.year === pickerYear && now.month === i + 1;
                       return (
                         <button
                           key={m}
                           onPointerDown={(e) => {
                             e.preventDefault();
-                            const d = new Date(pickerYear, i, 15);
-                            setWeekStart(getWeekStart(d));
+                            const dateKey = dateKeyFromParts(pickerYear, i + 1, 15);
+                            setWeekStart(getWeekStartForDateKey(dateKey));
                             setShowMonthPicker(false);
                           }}
                           className={`rounded-xl py-2 text-xs font-medium transition-colors active:scale-95 ${
@@ -294,8 +286,8 @@ export default function CalendarClient({
                   <button
                     onPointerDown={(e) => {
                       e.preventDefault();
-                      setWeekStart(getWeekStart(new Date()));
-                      setPickerYear(new Date().getFullYear());
+                      setWeekStart(getPoolWeekStartDateKey());
+                      setPickerYear(getDateKeyParts(getPoolDateKey()).year);
                       setShowMonthPicker(false);
                     }}
                     className="w-full mt-2 text-xs font-medium text-blue-600 hover:text-blue-800 py-1.5 rounded-lg hover:bg-blue-50 active:bg-blue-100 transition-colors"
@@ -308,9 +300,7 @@ export default function CalendarClient({
           </div>
           <button
             onClick={() => {
-              const next = new Date(weekStart);
-              next.setDate(next.getDate() + 7);
-              setWeekStart(next);
+              setWeekStart(addDaysToDateKey(weekStart, 7));
             }}
             className="text-blue-600 hover:text-blue-800 font-medium text-xs sm:text-sm transition-colors active:scale-95"
           >
@@ -321,7 +311,7 @@ export default function CalendarClient({
         {/* Today button + user */}
         <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-gray-100">
           <button
-            onClick={() => setWeekStart(getWeekStart(new Date()))}
+            onClick={() => setWeekStart(getPoolWeekStartDateKey())}
             className={`text-[11px] sm:text-xs font-medium transition-colors ${
               isThisWeek
                 ? "text-gray-300 cursor-default"
@@ -399,7 +389,8 @@ export default function CalendarClient({
 
               {/* Day headers */}
               {weekDays.map((d, i) => {
-                const isToday = formatDate(d) === formatDate(new Date());
+                const dateParts = getDateKeyParts(d);
+                const isToday = d === todayDateKey;
                 return (
                   <div
                     key={i}
@@ -412,7 +403,7 @@ export default function CalendarClient({
                         isToday ? "text-blue-600" : "text-gray-400"
                       }`}
                     >
-                      {DAYS[d.getDay()]}
+                      {DAYS[getDateKeyDay(d)]}
                     </div>
                     <div
                       className={`text-sm sm:text-base font-bold mt-0.5 ${
@@ -421,7 +412,7 @@ export default function CalendarClient({
                           : "text-gray-700"
                       }`}
                     >
-                      {d.getDate()}
+                      {dateParts.day}
                     </div>
                   </div>
                 );
@@ -435,7 +426,7 @@ export default function CalendarClient({
                   </div>
                   {weekDays.map((d, di) => {
                     const booking = isBooked(d, hour);
-                    const slotTime = new Date(d).setHours(hour, 0, 0, 0);
+                    const slotTime = poolDateTime(d, hour).getTime();
                     const isPast = slotTime < Date.now();
                     const isMine = booking?.creatorEmail === userEmail;
 
@@ -476,7 +467,10 @@ export default function CalendarClient({
                                     {isMine ? "Tú" : booking.creator.split(" ")[0]}
                                   </span>
                                   <span className="text-[8px] sm:text-[10px] opacity-80 shrink-0">
-                                    {formatHour(new Date(booking.start).getHours())}
+                                    {(() => {
+                                      const start = getPoolDateTimeParts(new Date(booking.start));
+                                      return formatHour(start.hour, start.minute);
+                                    })()}
                                   </span>
                                   {isMine && !isPast && (
                                     <button
@@ -537,7 +531,8 @@ export default function CalendarClient({
                   </p>
                   <div className="space-y-2">
                     {upcomingBookings.map((b) => {
-                      const d = new Date(b.start);
+                      const dateKey = getPoolDateKey(new Date(b.start));
+                      const d = getDateKeyParts(dateKey);
                       return (
                         <div
                           key={b.id}
@@ -545,7 +540,7 @@ export default function CalendarClient({
                         >
                           <div className="min-w-0 flex-1">
                             <p className="font-semibold text-sm text-gray-800">
-                              {DAYS[d.getDay()]}, {d.getDate()} {MONTHS[d.getMonth()]}
+                              {DAYS[getDateKeyDay(dateKey)]}, {d.day} {MONTHS[d.month - 1]}
                             </p>
                             <p className="text-xs text-gray-500 mt-0.5">
                               {formatTimeRange(b.start, b.end)}
@@ -573,7 +568,8 @@ export default function CalendarClient({
                   </p>
                   <div className="space-y-1.5">
                     {pastBookings.map((b) => {
-                      const d = new Date(b.start);
+                      const dateKey = getPoolDateKey(new Date(b.start));
+                      const d = getDateKeyParts(dateKey);
                       return (
                         <div
                           key={b.id}
@@ -581,7 +577,7 @@ export default function CalendarClient({
                         >
                           <div className="min-w-0 flex-1">
                             <p className="text-sm text-gray-500">
-                              {DAYS[d.getDay()]}, {d.getDate()} {MONTHS[d.getMonth()]}
+                              {DAYS[getDateKeyDay(dateKey)]}, {d.day} {MONTHS[d.month - 1]}
                             </p>
                             <p className="text-xs text-gray-400">
                               {formatTimeRange(b.start, b.end)}

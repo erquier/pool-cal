@@ -1,4 +1,5 @@
 import { getEvents } from "@/lib/google-calendar";
+import { getPoolDateTimeParts, POOL_TIME_ZONE } from "@/lib/pool-time";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -57,7 +58,8 @@ function pad(n: number): string {
 }
 
 function formatICSDate(d: Date): string {
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+  const parts = getPoolDateTimeParts(d);
+  return `${parts.year}${pad(parts.month)}${pad(parts.day)}T${pad(parts.hour)}${pad(parts.minute)}${pad(parts.second)}`;
 }
 
 function buildICS(events: any[]): string {
@@ -68,8 +70,18 @@ function buildICS(events: any[]): string {
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "X-WR-CALNAME:Pool Cal - Residencial Ian 2",
-    "X-WR-TIMEZONE:America/Santo_Domingo",
+    `X-WR-TIMEZONE:${POOL_TIME_ZONE}`,
     "X-PUBLISHED-TTL:PT1H",
+    "BEGIN:VTIMEZONE",
+    `TZID:${POOL_TIME_ZONE}`,
+    `X-LIC-LOCATION:${POOL_TIME_ZONE}`,
+    "BEGIN:STANDARD",
+    "TZOFFSETFROM:-0400",
+    "TZOFFSETTO:-0400",
+    "TZNAME:AST",
+    "DTSTART:19700101T000000",
+    "END:STANDARD",
+    "END:VTIMEZONE",
   ];
 
   for (const event of events) {
@@ -78,8 +90,8 @@ function buildICS(events: any[]): string {
     lines.push(
       "BEGIN:VEVENT",
       `UID:${event.id}@pool.erqlabs.site`,
-      `DTSTART:${formatICSDate(dtStart)}`,
-      `DTEND:${formatICSDate(dtEnd)}`,
+      `DTSTART;TZID=${POOL_TIME_ZONE}:${formatICSDate(dtStart)}`,
+      `DTEND;TZID=${POOL_TIME_ZONE}:${formatICSDate(dtEnd)}`,
       `SUMMARY:${event.title || "Piscina reservada"}`,
       `DESCRIPTION:Reservado por: ${event.creator}`,
       "TRANSP:OPAQUE",

@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { POOL_TIME_ZONE } from "./pool-time";
 
 function getAuth() {
   const key = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY!);
@@ -57,8 +58,8 @@ export async function createBooking(
     requestBody: {
       summary: `🏊 ${userName}`,
       description: `${userName} | ${userEmail}`,
-      start: { dateTime: start.toISOString(), timeZone: "America/Santo_Domingo" },
-      end: { dateTime: end.toISOString(), timeZone: "America/Santo_Domingo" },
+      start: { dateTime: start.toISOString(), timeZone: POOL_TIME_ZONE },
+      end: { dateTime: end.toISOString(), timeZone: POOL_TIME_ZONE },
       transparency: "opaque",
     },
   });
